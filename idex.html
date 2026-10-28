@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Skinzy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#0f0f12;--card:#1a1a20;--line:#2b2b35;--text:#f3f3f5;--mut:#8e8e9a;--ac:#ff9f1c;--ac2:#ffcf5c}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font:500 16px/1.4 "Exo 2",system-ui,sans-serif;padding-top:env(safe-area-inset-top,0)}
+#app{max-width:520px;margin:0 auto;padding:16px 16px 96px}
+h1,h2{font-weight:800}
+h2{font-size:18px;margin:22px 0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.mut{color:var(--mut);font-size:14px}
+.bal{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#2a1c05,var(--card));border:1px solid #4a3410;border-radius:16px;padding:18px}
+.bal b{font-size:34px;color:var(--ac2)}
+.btn{background:var(--ac);color:#1a1100;border:0;border-radius:12px;padding:13px 18px;font:800 16px "Exo 2",sans-serif;width:100%}
+.btn.sm{width:auto;padding:8px 12px;font-size:14px}
+.btn.out{background:transparent;color:var(--text);border:1px solid var(--line)}
+textarea{width:100%;background:#121217;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit;min-height:84px;margin-bottom:10px}
+.live{display:inline-block;background:#e5322d;color:#fff;font-size:12px;font-weight:800;padding:2px 8px;border-radius:6px;margin-left:8px;vertical-align:middle}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.ava{width:84px;height:84px;border-radius:50%;background:var(--ac);color:#1a1100;font-size:40px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:20px auto 10px}
+.center{text-align:center}
+#nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#121217;border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0))}
+#nav button{flex:1;background:none;border:0;color:var(--mut);font:600 10px "Exo 2",sans-serif;padding:4px 0}
+#nav button span{display:block;font-size:22px;line-height:1.2}
+#nav button.on{color:var(--ac)}
+.login{min-height:80vh;display:flex;flex-direction:column;justify-content:center;gap:14px;text-align:center}
+.login h1{font-size:54px;color:var(--ac)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<nav id="nav" hidden></nav>
+<script>
+const SB_URL = "https://ulfzaazjquxehvqnmprk.supabase.co";
+const SB_KEY = "sb_publishable_mZXX0wi6MUxjbP7bVtuoAA_Bf2Rxw0D";
+const sb = supabase.createClient(SB_URL, SB_KEY);
+
+const $ = s => document.querySelector(s);
+const esc = t => String(t).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = d => new Date(d).toLocaleString("ru-RU", {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"});
+const TABS = [["home","🏠","Главная"],["shop","🔫","Магазин"],["tasks","✅","Задания"],["wheel","🎡","Колесо"],["inv","🎒","Инвентарь"],["me","👤","Профиль"]];
+let me = null, user = null, tab = "home";
+
+async function init() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return showLogin();
+  user = session.user;
+  const { data } = await sb.from("profiles").select("*").eq("id", user.id).single();
+  me = data || { email: user.email, role: "user", coins: 0 };
+  buildNav();
+  show("home");
+}
+
+function showLogin() {
+  $("#nav").hidden = true;
+  $("#app").innerHTML = `<div class="login"><h1>Skinzy</h1><p class="mut">Выполняй задания, копи монеты и крути колесо со скинами.</p><button class="btn" id="g">Войти через Google</button></div>`;
+  $("#g").onclick = () => sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } });
+}
+
+function buildNav() {
+  const tabs = [...TABS];
+  if (me.role === "senior" || me.role === "junior") tabs.push(["admin","🛡","Админ"]);
+  const nav = $("#nav");
+  nav.hidden = false;
+  nav.innerHTML = tabs.map(t => `<button data-t="${t[0]}"><span>${t[1]}</span>${t[2]}</button>`).join("");
+  nav.onclick = e => { const b = e.target.closest("button"); if (b) show(b.dataset.t); };
+}
+
+function show(t) {
+  tab = t;
+  document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.t === t));
+  const v = { home, me: profile, admin }[t];
+  if (v) v(); else soon(t);
+  scrollTo(0, 0);
+}
+
+function soon(t) {
+  const txt = {
+    shop: ["Магазин", "Здесь будут скины в наличии: фото, название и состояние."],
+    tasks: ["Задания", "Здесь появятся задания с наградой в монетах."],
+    wheel: ["Колесо фортуны", "Здесь будешь крутить колесо за монеты."],
+    inv: ["Инвентарь", "Здесь будут твои выигранные скины."]
+  }[t];
+  $("#app").innerHTML = `<h2>${txt[0]}</h2><div class="card mut">${txt[1]} Раздел в разработке.</div>`;
+}
+
+async function home() {
+  $("#app").innerHTML = `
+    <div class="bal"><div><div class="mut">Твой баланс</div><b>${me.coins}</b> <span class="mut">монет</span></div><button class="btn sm" onclick="show('tasks')">Заработать</button></div>
+    <h2>Уведомления</h2><div id="ntf"><div class="card mut">Загрузка...</div></div>
+    <h2>Выигрыши<span class="live">LIVE</span></h2><div id="wins"><div class="card mut">Загрузка...</div></div>`;
+  const [n, w] = await Promise.all([
+    sb.from("notifications").select("*").order("created_at", { ascending: false }).limit(5),
+    sb.from("wins").select("*").order("created_at", { ascending: false }).limit(10)
+  ]);
+  $("#ntf").innerHTML = (n.data && n.data.length)
+    ? n.data.map(x => `<div class="card"><div>${esc(x.text)}</div><div class="mut">${fmt(x.created_at)}</div></div>`).join("")
+    : `<div class="card mut">Новых уведомлений нет.</div>`;
+  $("#wins").innerHTML = (w.data && w.data.length)
+    ? w.data.map(x => `<div class="card row"><div><b>${esc(x.player)}</b><div class="mut">выиграл ${esc(x.skin)}</div></div><div class="mut">${fmt(x.created_at)}</div></div>`).join("")
+    : `<div class="card mut">Пока нет выигрышей. Первый может быть твой.</div>`;
+}
+
+function profile() {
+  const name = me.email.split("@")[0];
+  $("#app").innerHTML = `
+    <div class="ava">${esc(name[0].toUpperCase())}</div>
+    <div class="center"><h1 style="font-size:24px">${esc(name)}</h1><div class="mut">${esc(me.email)}</div></div>
+    <div class="card row" style="margin-top:22px"><span>Монеты</span><b>${me.coins}</b></div>
+    <button class="btn out" id="out">Выйти</button>`;
+  $("#out").onclick = async () => { await sb.auth.signOut(); location.reload(); };
+}
+
+async function admin() {
+  if (me.role !== "senior") {
+    $("#app").innerHTML = `<h2>Панель админа</h2><div class="card mut">Ты младший админ. Добавление скинов в магазин появится в следующей версии.</div>`;
+    return;
+  }
+  $("#app").innerHTML = `
+    <h2>Отправить уведомление</h2>
+    <textarea id="nt" maxlength="300" placeholder="Текст уведомления для всех игроков"></textarea>
+    <button class="btn" id="send">Отправить всем</button>
+    <h2>Отправленные</h2><div id="sent"></div>`;
+  $("#send").onclick = async () => {
+    const text = $("#nt").value.trim();
+    if (!text) return;
+    const { error } = await sb.from("notifications").insert({ text });
+    if (error) return alert("Не получилось отправить: " + error.message);
+    $("#nt").value = "";
+    list();
+  };
+  list();
+  async function list() {
+    const { data } = await sb.from("notifications").select("*").order("created_at", { ascending: false }).limit(20);
+    $("#sent").innerHTML = (data || []).map(x => `<div class="card row"><div>${esc(x.text)}<div class="mut">${fmt(x.created_at)}</div></div><button class="btn sm out" data-d="${x.id}">Удалить</button></div>`).join("") || `<div class="card mut">Ты ещё ничего не отправлял.</div>`;
+    document.querySelectorAll("[data-d]").forEach(b => b.onclick = async () => { await sb.from("notifications").delete().eq("id", b.dataset.d); list(); });
+  }
+}
+
+init();
+</script>
+</body>
+  </html>
